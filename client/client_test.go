@@ -38,12 +38,12 @@ func Test_DoRequest(t *testing.T) {
 
 	_, err = NewClient(nil)
 	utils.AssertNotNil(t, err)
-	utils.AssertEqual(t, err.Error(), "SDKError:\n   Code: ParameterMissing\n   Message: 'config' can not be unset\n   Data: \n")
+	utils.AssertEqual(t, err.Error(), "SDKError:\n   StatusCode: 0\n   Code: ParameterMissing\n   Message: 'config' can not be unset\n   Data: \n")
 
 	config.SetRegionId("cn-hangzhou")
 	_, err = NewClient(config)
 	utils.AssertNotNil(t, err)
-	utils.AssertEqual(t, err.Error(), "SDKError:\n   Code: ParameterMissing\n   Message: 'accessKeyId' and 'accessKeySecret' or 'credential' can not be unset\n   Data: \n")
+	utils.AssertEqual(t, err.Error(), "SDKError:\n   StatusCode: 0\n   Code: ParameterMissing\n   Message: 'accessKeyId' and 'accessKeySecret' or 'credential' can not be unset\n   Data: \n")
 
 	config.SetCredential(c)
 	_, err = NewClient(config)
@@ -92,14 +92,14 @@ func Test_DoRequest(t *testing.T) {
 	resp, err := client.DoRequest(tea.String("testApi"), tea.String("HTTP"), tea.String("GET"),
 		tea.String("2019-12-12"), tea.String("AK"), nil, nil, runtime)
 	utils.AssertNotNil(t, err)
-	utils.AssertEqual(t, err.Error(), "SDKError:\n   Code: 杭州\n   Message: code: 400, <nil> request id: <nil>\n   Data: {\"Code\":\"杭州\"}\n")
+	utils.AssertEqual(t, err.Error(), "SDKError:\n   StatusCode: 400\n   Code: 杭州\n   Message: code: 400, <nil> request id: <nil>\n   Data: {\"Code\":\"杭州\"}\n")
 	utils.AssertNil(t, resp)
 
 	runtime.SetMaxAttempts(3).SetAutoretry(true).SetBackoffPeriod(1).SetBackoffPolicy("ok")
 	resp, err = client.DoRequest(tea.String("testApi"), tea.String("HTTP"), tea.String("GET"),
 		tea.String("2019-12-12"), tea.String("AK"), nil, map[string]interface{}{"test": "ok"}, runtime)
 	utils.AssertNotNil(t, err)
-	utils.AssertEqual(t, err.Error(), "SDKError:\n   Code: 杭州\n   Message: code: 400, <nil> request id: <nil>\n   Data: {\"Code\":\"杭州\"}\n")
+	utils.AssertEqual(t, err.Error(), "SDKError:\n   StatusCode: 400\n   Code: 杭州\n   Message: code: 400, <nil> request id: <nil>\n   Data: {\"Code\":\"杭州\"}\n")
 	utils.AssertNil(t, resp)
 
 	ts = mockServer(200, `{"Code": "杭州"}`)
@@ -128,5 +128,5 @@ func Test_DoRequest(t *testing.T) {
 	config.SetEndpoint("")
 	client.EndpointRule = tea.String("")
 	err = client.CheckConfig(config)
-	utils.AssertEqual(t, err.Error(), "SDKError:\n   Code: ParameterMissing\n   Message: 'config.endpoint' can not be empty\n   Data: \n")
+	utils.AssertEqual(t, err.Error(), "SDKError:\n   StatusCode: 0\n   Code: ParameterMissing\n   Message: 'config.endpoint' can not be empty\n   Data: \n")
 }
