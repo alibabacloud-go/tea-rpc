@@ -399,7 +399,6 @@ func (client *Client) DoRequest(action *string, protocol *string, method *string
 			if _err != nil {
 				return _result, _err
 			}
-
 			res := util.AssertAsMap(obj)
 			if tea.BoolValue(util.Is4xx(response_.StatusCode)) || tea.BoolValue(util.Is5xx(response_.StatusCode)) {
 				_err = tea.NewSDKError(map[string]interface{}{
@@ -412,6 +411,7 @@ func (client *Client) DoRequest(action *string, protocol *string, method *string
 			}
 
 			_result = res
+			_result["_headers"] = response_.Headers
 			return _result, _err
 		}()
 		if !tea.BoolValue(tea.Retryable(_err)) {
