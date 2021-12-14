@@ -210,6 +210,7 @@ type Client struct {
 	SourceIp             *string
 	SecureTransport      *string
 	Credential           credential.Credential
+	Headers              map[string]*string
 }
 
 /**
@@ -349,13 +350,22 @@ func (client *Client) DoRequest(action *string, protocol *string, method *string
 			if !tea.BoolValue(util.IsUnset(client.SecureTransport)) {
 				request_.Query["SecureTransport"] = client.SecureTransport
 			}
-
-			// endpoint is setted in product client
-			request_.Headers = map[string]*string{
-				"x-acs-version": version,
-				"x-acs-action":  action,
-				"host":          client.Endpoint,
-				"user-agent":    client.GetUserAgent(),
+			headers, _err := client.GetRpcHeaders()
+			if tea.BoolValue(util.IsUnset(headers)) {
+				// endpoint is setted in product client
+				request_.Headers = map[string]*string{
+					"host":          client.Endpoint,
+					"x-acs-version": version,
+					"x-acs-action":  action,
+					"user-agent":    client.GetUserAgent(),
+				}
+			} else {
+				request_.Headers = tea.Merge(map[string]*string{
+					"host":          client.Endpoint,
+					"x-acs-version": version,
+					"x-acs-action":  action,
+					"user-agent":    client.GetUserAgent(),
+				}, headers)
 			}
 			if !tea.BoolValue(util.IsUnset(body)) {
 				tmp := util.AnyifyMapValue(rpcutil.Query(body))
@@ -500,6 +510,25 @@ func (client *Client) CheckConfig(config *Config) (_err error) {
 	}
 
 	return _err
+}
+
+/**
+ * set RPC header for debug
+ * @param headers headers for debug, this header can be used only once.
+ */
+func (client *Client) SetHeaders(headers map[string]*string) (_err error) {
+	client.Headers = headers
+	return _err
+}
+
+/**
+ * get RPC header for debug
+ */
+func (client *Client) GetHeaders() (_result map[string]*string, _err error) {
+	headers := client.Headers
+	client.Headers = nil
+	_result = headers
+	return _result, _err
 }
 
 /**
