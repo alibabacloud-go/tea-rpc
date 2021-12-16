@@ -350,7 +350,7 @@ func (client *Client) DoRequest(action *string, protocol *string, method *string
 			if !tea.BoolValue(util.IsUnset(client.SecureTransport)) {
 				request_.Query["SecureTransport"] = client.SecureTransport
 			}
-			headers, _err := client.GetRpcHeaders()
+			headers, _err := client.GetHeaders()
 			if tea.BoolValue(util.IsUnset(headers)) {
 				// endpoint is setted in product client
 				request_.Headers = map[string]*string{
