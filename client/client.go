@@ -416,6 +416,7 @@ func (client *Client) DoRequest(action *string, protocol *string, method *string
 					"statusCode": tea.IntValue(response_.StatusCode),
 					"message":    "code: " + tea.ToString(tea.IntValue(response_.StatusCode)) + ", " + tea.ToString(DefaultAny(res["Message"], res["message"])) + " request id: " + tea.ToString(DefaultAny(res["RequestId"], res["requestId"])),
 					"data":       res,
+					"_headers":   response_.Headers,
 				})
 				return _result, _err
 			}
