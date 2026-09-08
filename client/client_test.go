@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	util "github.com/alibabacloud-go/tea-utils/service"
@@ -21,6 +22,15 @@ func mockServer(status int, json string) (server *httptest.Server) {
 		return
 	}))
 	return ts
+}
+
+type countingMarshaler struct {
+	count *int32
+}
+
+func (m countingMarshaler) MarshalJSON() ([]byte, error) {
+	atomic.AddInt32(m.count, 1)
+	return []byte(`"body-value"`), nil
 }
 
 func Test_DoRequest(t *testing.T) {
@@ -129,4 +139,143 @@ func Test_DoRequest(t *testing.T) {
 	client.EndpointRule = tea.String("")
 	err = client.CheckConfig(config)
 	utils.AssertEqual(t, err.Error(), "SDKError:\n   StatusCode: 0\n   Code: ParameterMissing\n   Message: 'config.endpoint' can not be empty\n   Data: \n")
+}
+
+func Test_DoRequestReturnsFlattenError(t *testing.T) {
+	config := new(Config).
+		SetAccessKeyId("accesskey_id").
+		SetAccessKeySecret("accesskey_secret").
+		SetRegionId("cn-hangzhou")
+	client, err := NewClient(config)
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
+
+	var requestCount int32
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&requestCount, 1)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer ts.Close()
+	client.Endpoint = tea.String(strings.TrimPrefix(ts.URL, "http://"))
+
+	tests := []struct {
+		name  string
+		query map[string]interface{}
+		body  map[string]interface{}
+	}{
+		{
+			name: "query",
+			query: map[string]interface{}{
+				"Items": []interface{}{"first", nil},
+			},
+		},
+		{
+			name: "body",
+			body: map[string]interface{}{
+				"Items": []interface{}{"first", nil},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			atomic.StoreInt32(&requestCount, 0)
+			runtime := new(util.RuntimeOptions).
+				SetAutoretry(true).
+				SetMaxAttempts(3)
+			resp, err := client.DoRequest(
+				tea.String("testApi"),
+				tea.String("HTTP"),
+				tea.String("POST"),
+				tea.String("2019-12-12"),
+				tea.String("AK"),
+				tt.query,
+				tt.body,
+				runtime,
+			)
+			if err == nil {
+				t.Fatal("DoRequest() error = nil, want flatten error")
+			}
+			wantErr := `cannot serialize repeated parameter element "Items.2": value is nil`
+			if err.Error() != wantErr {
+				t.Fatalf("DoRequest() error = %q, want %q", err, wantErr)
+			}
+			if resp != nil {
+				t.Fatalf("DoRequest() response = %#v, want nil", resp)
+			}
+			if got := atomic.LoadInt32(&requestCount); got != 0 {
+				t.Fatalf("server request count = %d, want 0", got)
+			}
+		})
+	}
+}
+
+func Test_DoRequestPreservesSuccessfulSerializationFlow(t *testing.T) {
+	config := new(Config).
+		SetAccessKeyId("accesskey_id").
+		SetAccessKeySecret("accesskey_secret").
+		SetRegionId("cn-hangzhou")
+	client, err := NewClient(config)
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
+
+	var requestCount int32
+	var marshalCount int32
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&requestCount, 1)
+		queryValues := r.URL.Query()
+		if got := queryValues.Get("Items.1"); got != "query-value" {
+			t.Errorf("query Items.1 = %q, want query-value", got)
+		}
+		if values, ok := queryValues["Items.2"]; !ok || len(values) != 1 || values[0] != "" {
+			t.Errorf("query Items.2 = %#v, want one empty value", values)
+		}
+		if queryValues.Get("Signature") == "" {
+			t.Error("query Signature is empty")
+		}
+		if err := r.ParseForm(); err != nil {
+			t.Errorf("ParseForm() error = %v", err)
+		}
+		if got := r.PostForm.Get("BodyValue"); got != "body-value" {
+			t.Errorf("body BodyValue = %q, want body-value", got)
+		}
+		if values, ok := r.PostForm["Empty"]; !ok || len(values) != 1 || values[0] != "" {
+			t.Errorf("body Empty = %#v, want one empty value", values)
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer ts.Close()
+	client.Endpoint = tea.String(strings.TrimPrefix(ts.URL, "http://"))
+
+	resp, err := client.DoRequest(
+		tea.String("testApi"),
+		tea.String("HTTP"),
+		tea.String("POST"),
+		tea.String("2019-12-12"),
+		tea.String("AK"),
+		map[string]interface{}{
+			"Items": []interface{}{"query-value", ""},
+		},
+		map[string]interface{}{
+			"BodyValue": countingMarshaler{count: &marshalCount},
+			"Empty":     "",
+		},
+		new(util.RuntimeOptions),
+	)
+	if err != nil {
+		t.Fatalf("DoRequest() error = %v", err)
+	}
+	if resp == nil {
+		t.Fatal("DoRequest() response = nil")
+	}
+	if got := atomic.LoadInt32(&requestCount); got != 1 {
+		t.Fatalf("server request count = %d, want 1", got)
+	}
+	if got := atomic.LoadInt32(&marshalCount); got != 2 {
+		t.Fatalf("body marshal count = %d, want 2 to match the original body and signature serialization calls", got)
+	}
 }
