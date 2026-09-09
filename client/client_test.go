@@ -102,14 +102,18 @@ func Test_DoRequest(t *testing.T) {
 	resp, err := client.DoRequest(tea.String("testApi"), tea.String("HTTP"), tea.String("GET"),
 		tea.String("2019-12-12"), tea.String("AK"), nil, nil, runtime)
 	utils.AssertNotNil(t, err)
-	utils.AssertEqual(t, err.Error(), "SDKError:\n   StatusCode: 400\n   Code: 杭州\n   Message: code: 400, <nil> request id: <nil>\n   Data: {\"Code\":\"杭州\"}\n")
+	utils.AssertContains(t, err.Error(),
+		"SDKError:\n   StatusCode: 400\n   Code: 杭州\n   Message: code: 400, <nil> request id: <nil>\n",
+		"Data: {\"Code\":\"杭州\",\"_headers\":")
 	utils.AssertNil(t, resp)
 
 	runtime.SetMaxAttempts(3).SetAutoretry(true).SetBackoffPeriod(1).SetBackoffPolicy("ok")
 	resp, err = client.DoRequest(tea.String("testApi"), tea.String("HTTP"), tea.String("GET"),
 		tea.String("2019-12-12"), tea.String("AK"), nil, map[string]interface{}{"test": "ok"}, runtime)
 	utils.AssertNotNil(t, err)
-	utils.AssertEqual(t, err.Error(), "SDKError:\n   StatusCode: 400\n   Code: 杭州\n   Message: code: 400, <nil> request id: <nil>\n   Data: {\"Code\":\"杭州\"}\n")
+	utils.AssertContains(t, err.Error(),
+		"SDKError:\n   StatusCode: 400\n   Code: 杭州\n   Message: code: 400, <nil> request id: <nil>\n",
+		"Data: {\"Code\":\"杭州\",\"_headers\":")
 	utils.AssertNil(t, resp)
 
 	ts = mockServer(200, `{"Code": "杭州"}`)
@@ -117,7 +121,8 @@ func Test_DoRequest(t *testing.T) {
 	resp, err = client.DoRequest(tea.String("testApi"), tea.String("HTTP"), tea.String("GET"),
 		tea.String("2019-12-12"), tea.String("AK"), nil, map[string]interface{}{"test": "ok"}, runtime)
 	utils.AssertNil(t, err)
-	utils.AssertEqual(t, resp, map[string]interface{}{"Code": "杭州"})
+	utils.AssertEqual(t, resp["Code"], "杭州")
+	utils.AssertNotNil(t, resp["_headers"])
 
 	client.Credential = nil
 	ak, err := client.GetAccessKeyId()
