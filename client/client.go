@@ -331,18 +331,23 @@ func (client *Client) DoRequest(action *string, protocol *string, method *string
 			}
 		}
 
+		var serializationErr error
 		_resp, _err = func() (map[string]interface{}, error) {
 			request_ := tea.NewRequest()
 			request_.Protocol = util.DefaultString(client.Protocol, protocol)
 			request_.Method = method
 			request_.Pathname = tea.String("/")
-			request_.Query = rpcutil.Query(tea.ToMap(map[string]interface{}{
+			request_.Query, _err = rpcutil.FlattenParams(tea.ToMap(map[string]interface{}{
 				"Action":         tea.StringValue(action),
 				"Format":         "json",
 				"Timestamp":      tea.StringValue(rpcutil.GetTimestamp()),
 				"Version":        tea.StringValue(version),
 				"SignatureNonce": tea.StringValue(util.GetNonce()),
 			}, query))
+			if _err != nil {
+				serializationErr = _err
+				return _result, serializationErr
+			}
 			if !tea.BoolValue(util.IsUnset(client.SourceIp)) {
 				request_.Query["SourceIp"] = client.SourceIp
 			}
@@ -368,7 +373,12 @@ func (client *Client) DoRequest(action *string, protocol *string, method *string
 				}, headers)
 			}
 			if !tea.BoolValue(util.IsUnset(body)) {
-				tmp := util.AnyifyMapValue(rpcutil.Query(body))
+				bodyParams, err := rpcutil.FlattenParams(body)
+				if err != nil {
+					serializationErr = err
+					return _result, serializationErr
+				}
+				tmp := util.AnyifyMapValue(bodyParams)
 				request_.Body = tea.ToReader(util.ToFormString(tmp))
 				request_.Headers["content-type"] = tea.String("application/x-www-form-urlencoded")
 			}
@@ -396,8 +406,12 @@ func (client *Client) DoRequest(action *string, protocol *string, method *string
 				request_.Query["SignatureMethod"] = tea.String("HMAC-SHA1")
 				request_.Query["SignatureVersion"] = tea.String("1.0")
 				request_.Query["AccessKeyId"] = accessKeyId
-				signedParam := tea.Merge(request_.Query,
-					rpcutil.Query(body))
+				bodyParams, err := rpcutil.FlattenParams(body)
+				if err != nil {
+					serializationErr = err
+					return _result, serializationErr
+				}
+				signedParam := tea.Merge(request_.Query, bodyParams)
 				request_.Query["Signature"] = rpcutil.GetSignatureV1(signedParam, request_.Method, accessKeySecret)
 			}
 
@@ -426,6 +440,9 @@ func (client *Client) DoRequest(action *string, protocol *string, method *string
 			_result["_headers"] = response_.Headers
 			return _result, _err
 		}()
+		if serializationErr != nil {
+			return _resp, serializationErr
+		}
 		if !tea.BoolValue(tea.Retryable(_err)) {
 			break
 		}
